@@ -79,7 +79,72 @@ async function main() {
     },
   });
 
-  console.log('Seed completed', { profileId: profile.id, userId: user.id, caseId: courtCase.id, hearingId: hearing.id });
+  const template = await prisma.protocolTemplate.upsert({
+    where: {
+      key_version_proceedingCode_language: {
+        key: 'apc-default',
+        version: 1,
+        proceedingCode: 'APC',
+        language: 'ru',
+      },
+    },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000006',
+      key: 'apc-default',
+      version: 1,
+      proceedingCode: 'APC',
+      language: 'ru',
+      legalProfileId: profile.id,
+      storageKey: 'templates/apc-default.docx',
+      structure: {
+        title: 'Судебный протокол',
+        sections: ['Сведения о деле', 'Участники', 'Ход заседания', 'Заявления и ходатайства', 'Решения суда'],
+      },
+      isActive: true,
+    },
+  });
+
+  const protocol = await prisma.protocolDocument.upsert({
+    where: {
+      hearingId_kind_version: {
+        hearingId: hearing.id,
+        kind: 'FULL_WRITTEN',
+        version: 1,
+      },
+    },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000005',
+      hearingId: hearing.id,
+      templateId: template.id,
+      version: 1,
+      kind: 'FULL_WRITTEN',
+      status: 'DRAFT',
+      content: {
+        heading: 'Судебный протокол — черновик',
+        notice: 'Демонстрационный шаблон. Заполните фактические сведения и проверьте их перед использованием.',
+        sections: [
+          { title: 'Сведения о деле', text: 'Заполнить номер, дату и состав суда.' },
+          { title: 'Участники', text: 'Заполнить данные и явку участников.' },
+          { title: 'Ход заседания', text: 'Вставить и проверить текстовую расшифровку.' },
+          { title: 'Заявления и ходатайства', text: 'Заполнить по материалам заседания.' },
+          { title: 'Решения суда', text: 'Заполнить только по подтверждённым сведениям.' },
+        ],
+      },
+      legalRuleSnapshot: { profile: 'APC', version: '2026-10-14', demo: true },
+      createdById: user.id,
+    },
+  });
+
+  console.log('Seed completed', {
+    profileId: profile.id,
+    userId: user.id,
+    caseId: courtCase.id,
+    hearingId: hearing.id,
+    templateId: template.id,
+    protocolId: protocol.id,
+  });
 }
 
 main()
