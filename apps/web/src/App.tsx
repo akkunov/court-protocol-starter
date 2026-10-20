@@ -1,245 +1,226 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type TabKey = 'cases' | 'hearings' | 'recordings';
-
 type CaseItem = {
-  id: string;
-  caseNumber: string;
-  title: string;
-  proceedingCode: string;
-  courtName: string;
-  status: string;
+  id: string; caseNumber: string; title: string; proceedingCode: string;
+  courtName: string; status: string;
 };
-
 type HearingItem = {
-  id: string;
-  caseId: string;
-  status: string;
-  recordingMode: string;
-  scheduledAt: string;
-  presidingJudgeName?: string;
-  secretaryName?: string;
-  location?: string;
+  id: string; caseId: string; status: string; recordingMode: string;
+  scheduledAt: string; presidingJudgeName?: string; secretaryName?: string; location?: string;
 };
-
 type RecordingItem = {
-  id: string;
-  hearingId: string;
-  originalName: string;
-  storageKey: string;
-  mimeType: string;
-  status: string;
-  sizeBytes: number;
+  id: string; hearingId: string; originalName: string; storageKey: string;
+  mimeType: string; status: string; sizeBytes: number | string;
 };
+type ProtocolItem = { id: string; version: number; kind: string; status: string };
+type ApiError = { message?: string | string[] };
 
-const API_BASE = 'http://localhost:3000';
-const API_KEY = 'change-me';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (API_KEY) headers.set('x-api-key', API_KEY);
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (!response.ok) {
+    let message = `HTTP ${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as ApiError;
+      if (payload.message) {
+        message = Array.isArray(payload.message) ? payload.message.join('; ') : payload.message;
+      }
+    } catch {
+      // Keep the HTTP status as the error message if the response is not JSON.
+    }
+    throw new Error(message);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('cases');
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [hearings, setHearings] = useState<HearingItem[]>([]);
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
+  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState('');
-  const [status, setStatus] = useState('');
+  const [selectedHearingId, setSelectedHearingId] = useState('');
+  const [selectedRecordingId, setSelectedRecordingId] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [language, setLanguage] = useState<'ky' | 'ru'>('ky');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('Подключение к API…');
+  const [error, setError] = useState('');
 
   const [caseForm, setCaseForm] = useState({
-    caseNumber: '1-123/2026',
-    title: 'Административное дело о применении меры',
-    proceedingCode: 'APC',
-    courtName: 'Бишкекский городской суд',
+    caseNumber: '', title: '', proceedingCode: 'APC', courtName: 'Ош областынын Административдик соту',
     legalProfileId: '00000000-0000-0000-0000-000000000001',
   });
-
   const [hearingForm, setHearingForm] = useState({
-    caseId: '',
-    scheduledAt: new Date().toISOString(),
+    scheduledAt: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     recordingMode: 'WRITTEN_PROTOCOL_WITH_AV',
-    presidingJudgeName: 'Токтосов А.А.',
-    secretaryName: 'Иванова Н.Н.',
-    location: 'Зал №2',
+    presidingJudgeName: '', secretaryName: '', location: '',
   });
 
-  const [recordingForm, setRecordingForm] = useState({
-    hearingId: '',
-    storageKey: 'recordings/demo/sample.wav',
-  });
-
-  const fetchCases = async () => {
-    const response = await fetch(`${API_BASE}/cases`, {
-      headers: { 'x-api-key': API_KEY },
-    });
-    const data = await response.json();
-    setCases(data);
-    if (!selectedCaseId && data[0]) {
-      setSelectedCaseId(data[0].id);
-    }
-  };
-
-  const fetchHearings = async (caseId?: string) => {
-    const targetCaseId = caseId || selectedCaseId;
-    if (!targetCaseId) {
-      setHearings([]);
-      return;
-    }
-
-    const response = await fetch(`${API_BASE}/cases/${targetCaseId}`, {
-      headers: { 'x-api-key': API_KEY },
-    });
-    const data = await response.json();
-    setHearings(data.hearings ?? []);
-    if (data.hearings?.[0]) {
-      setRecordingForm((prev) => ({ ...prev, hearingId: data.hearings[0].id }));
-    }
-  };
-
-  const fetchRecordings = async () => {
-    if (!selectedCaseId) {
-      setRecordings([]);
-      return;
-    }
-
-    const response = await fetch(`${API_BASE}/cases/${selectedCaseId}`, {
-      headers: { 'x-api-key': API_KEY },
-    });
-    const data = await response.json();
-
-    const list: RecordingItem[] = [];
-    for (const hearing of data.hearings ?? []) {
-      const hearingRes = await fetch(`${API_BASE}/hearings/${hearing.id}`, {
-        headers: { 'x-api-key': API_KEY },
-      });
-      const hearingData = await hearingRes.json();
-      for (const rec of hearingData.recordings ?? []) {
-        list.push({
-          id: rec.id,
-          hearingId: rec.hearingId,
-          originalName: rec.originalName,
-          storageKey: rec.storageKey,
-          mimeType: rec.mimeType,
-          status: rec.status,
-          sizeBytes: Number(rec.sizeBytes ?? 0),
-        });
-      }
-    }
-
-    setRecordings(list);
-  };
-
-  useEffect(() => {
-    fetchCases();
-  }, []);
-
-  const currentCase = useMemo(
-    () => cases.find((item) => item.id === selectedCaseId) ?? cases[0],
+  const selectedCase = useMemo(
+    () => cases.find((item) => item.id === selectedCaseId) ?? null,
     [cases, selectedCaseId],
   );
 
+  const loadCases = useCallback(async () => {
+    const data = await api<CaseItem[]>('/cases');
+    setCases(data);
+    setSelectedCaseId((current) => current && data.some((item) => item.id === current) ? current : (data[0]?.id ?? ''));
+  }, []);
+
+  const loadHearings = useCallback(async (caseId: string) => {
+    if (!caseId) {
+      setHearings([]);
+      setSelectedHearingId('');
+      setRecordings([]);
+      return;
+    }
+    const data = await api<CaseItem & { hearings: HearingItem[] }>(`/cases/${encodeURIComponent(caseId)}`);
+    const list = data.hearings ?? [];
+    setHearings(list);
+    setSelectedHearingId((current) => current && list.some((item) => item.id === current) ? current : (list[0]?.id ?? ''));
+  }, []);
+
+  const loadRecordings = useCallback(async (hearingId: string) => {
+    if (!hearingId) {
+      setRecordings([]);
+      setSelectedRecordingId('');
+      setProtocols([]);
+      return;
+    }
+    const data = await api<{ recordings: RecordingItem[]; documents?: ProtocolItem[] }>(`/hearings/${encodeURIComponent(hearingId)}`);
+    const list = data.recordings ?? [];
+    setProtocols(data.documents ?? []);
+    setRecordings(list);
+    setSelectedRecordingId((current) => current && list.some((item) => item.id === current) ? current : (list[0]?.id ?? ''));
+  }, []);
+
   useEffect(() => {
-    if (!currentCase) return;
-    setHearingForm((prev) => ({ ...prev, caseId: currentCase.id }));
-    fetchHearings(currentCase.id);
-    fetchRecordings();
-  }, [currentCase]);
-
-  const createCase = async () => {
-    const response = await fetch(`${API_BASE}/cases`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-      },
-      body: JSON.stringify(caseForm),
+    void loadCases().catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить дела');
+      setStatus('Ошибка подключения');
     });
-    const data = await response.json();
-    setStatus(`Case created: ${data.id}`);
-    await fetchCases();
-  };
+  }, [loadCases]);
 
-  const createHearing = async () => {
-    const response = await fetch(`${API_BASE}/hearings`, {
+  useEffect(() => {
+    void loadHearings(selectedCaseId).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить заседания');
+    });
+  }, [selectedCaseId, loadHearings]);
+
+  useEffect(() => {
+    void loadRecordings(selectedHearingId).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить аудиозаписи');
+    });
+  }, [selectedHearingId, loadRecordings]);
+
+  async function runAction(label: string, action: () => Promise<void>) {
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+      setStatus(label);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Неизвестная ошибка';
+      setError(message);
+      setStatus('Операция не выполнена');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const createCase = () => runAction('Дело создано', async () => {
+    const created = await api<CaseItem>('/cases', { method: 'POST', body: JSON.stringify(caseForm) });
+    await loadCases();
+    setSelectedCaseId(created.id);
+  });
+
+  const createHearing = () => runAction('Заседание создано', async () => {
+    if (!selectedCaseId) throw new Error('Сначала выберите или создайте дело');
+    const scheduledAt = new Date(hearingForm.scheduledAt).toISOString();
+    const created = await api<HearingItem>('/hearings', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-      },
       body: JSON.stringify({
         ...hearingForm,
-        caseId: selectedCaseId || hearingForm.caseId,
+        scheduledAt,
+        caseId: selectedCaseId,
         instance: 'FIRST_INSTANCE',
         status: 'PLANNED',
       }),
     });
-    const data = await response.json();
-    setStatus(`Hearing created: ${data.id}`);
-    if (selectedCaseId || hearingForm.caseId) {
-      await fetchHearings(selectedCaseId || hearingForm.caseId);
-    }
-  };
+    await loadHearings(selectedCaseId);
+    setSelectedHearingId(created.id);
+  });
 
-  const createRecording = async () => {
-    const response = await fetch(`${API_BASE}/recordings/upload`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': API_KEY,
-      },
-      body: (() => {
-        const formData = new FormData();
-        formData.append('hearingId', recordingForm.hearingId || selectedCaseId || '');
-        const blob = new Blob(['demo audio test content'], { type: 'audio/wav' });
-        formData.append('file', blob, 'sample.wav');
-        return formData;
-      })(),
-    });
-    const data = await response.json();
-    setStatus(`Recording created: ${data.id}`);
-    await fetchRecordings();
-  };
+  const uploadRecording = () => runAction('Аудиозапись загружена', async () => {
+    if (!selectedHearingId) throw new Error('Выберите существующее судебное заседание');
+    if (!audioFile) throw new Error('Выберите настоящий аудиофайл');
+    const form = new FormData();
+    form.append('hearingId', selectedHearingId);
+    form.append('file', audioFile, audioFile.name);
+    const created = await api<RecordingItem>('/recordings/upload', { method: 'POST', body: form });
+    await loadRecordings(selectedHearingId);
+    setSelectedRecordingId(created.id);
+    setAudioFile(null);
+  });
 
-  const triggerASR = async () => {
-    if (!recordings[0]) return;
-    const response = await fetch(`${API_BASE}/transcription/trigger`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-      },
-      body: JSON.stringify({
-        storageKey: recordings[0].storageKey,
-        language: 'ky',
-      }),
-    });
-    const data = await response.json();
-    setStatus(`ASR triggered: ${data.language ?? 'ky'}`);
-  };
+  const exportProtocol = () => runAction('DOCX сформирован', async () => {
+    const protocol = protocols[0];
+    if (!protocol) throw new Error('Для заседания нет черновика протокола. Создайте ProtocolDocument через API после настройки шаблона и пользователя.');
+    const headers = new Headers();
+    if (API_KEY) headers.set('x-api-key', API_KEY);
+    const response = await fetch(`${API_BASE}/workflow/protocol/export/${encodeURIComponent(protocol.id)}`, { method: 'POST', headers });
+    if (!response.ok) throw new Error(`Ошибка экспорта DOCX: HTTP ${response.status}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `protocol-${protocol.id}-v${protocol.version}.docx`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  });
 
-  const exportProtocol = async () => {
-    const response = await fetch(`${API_BASE}/workflow/protocol/export/00000000-0000-0000-0000-000000000003`, {
+  const transcribeRecording = () => runAction('Распознавание завершено; сегменты сохранены', async () => {
+    const recording = recordings.find((item) => item.id === selectedRecordingId);
+    if (!recording) throw new Error('Выберите аудиозапись');
+    const result = await api<{ segmentsSaved: number; status: string }>('/transcription/trigger', {
       method: 'POST',
-      headers: { 'x-api-key': API_KEY },
+      body: JSON.stringify({ storageKey: recording.storageKey, language }),
     });
-    const data = await response.json();
-    setStatus(`Protocol exported: ${data.fileName ?? 'docx'}`);
-  };
+    await loadRecordings(selectedHearingId);
+    setStatus(`Распознавание завершено: сохранено фрагментов — ${result.segmentsSaved}`);
+  });
 
   return (
     <div className="page-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Court workflow</p>
+          <p className="eyebrow">Система судебного делопроизводства</p>
           <h1>Court Protocol</h1>
         </div>
-        <div className="status-pill">{status || 'ready'}</div>
+        <div className="status-pill">{busy ? 'Выполняется…' : status}</div>
       </header>
 
-      <nav className="tabs">
-        {(['cases', 'hearings', 'recordings'] as TabKey[]).map((tab) => (
-          <button
-            key={tab}
-            className={activeTab === tab ? 'tab active' : 'tab'}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab.toUpperCase()}
+      {error && <div role="alert" className="panel" style={{ borderColor: '#b91c1c', color: '#b91c1c' }}>{error}</div>}
+
+      <nav className="tabs" aria-label="Разделы">
+        {([['cases', 'Дела'], ['hearings', 'Заседания'], ['recordings', 'Аудиозаписи']] as [TabKey, string][]).map(([tab, label]) => (
+          <button key={tab} className={activeTab === tab ? 'tab active' : 'tab'} onClick={() => setActiveTab(tab)}>
+            {label}
           </button>
         ))}
       </nav>
@@ -248,52 +229,71 @@ export default function App() {
         <aside className="sidebar">
           {activeTab === 'cases' && (
             <div className="panel">
-              <h3>New case</h3>
-              <input value={caseForm.caseNumber} onChange={(e) => setCaseForm({ ...caseForm, caseNumber: e.target.value })} placeholder="Case number" />
-              <input value={caseForm.title} onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })} placeholder="Title" />
+              <h3>Новое дело</h3>
+              <input value={caseForm.caseNumber} onChange={(e) => setCaseForm({ ...caseForm, caseNumber: e.target.value })} placeholder="Номер дела" />
+              <input value={caseForm.title} onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })} placeholder="Наименование дела" />
               <select value={caseForm.proceedingCode} onChange={(e) => setCaseForm({ ...caseForm, proceedingCode: e.target.value })}>
-                <option value="APC">APC</option>
-                <option value="GPK">GPK</option>
-                <option value="UPK">UPK</option>
+                <option value="APC">АПК</option><option value="GPK">ГПК</option><option value="UPK">УПК</option>
               </select>
-              <input value={caseForm.courtName} onChange={(e) => setCaseForm({ ...caseForm, courtName: e.target.value })} placeholder="Court name" />
-              <button onClick={createCase}>Create case</button>
+              <input value={caseForm.courtName} onChange={(e) => setCaseForm({ ...caseForm, courtName: e.target.value })} placeholder="Наименование суда" />
+              <input value={caseForm.legalProfileId} onChange={(e) => setCaseForm({ ...caseForm, legalProfileId: e.target.value })} placeholder="UUID правового профиля" />
+              <button disabled={busy} onClick={() => void createCase()}>Создать дело</button>
             </div>
           )}
 
           {activeTab === 'hearings' && (
             <div className="panel">
-              <h3>New hearing</h3>
+              <h3>Новое заседание</h3>
+              <label>Дело</label>
               <select value={selectedCaseId} onChange={(e) => setSelectedCaseId(e.target.value)}>
-                {cases.map((item) => (
-                  <option key={item.id} value={item.id}>{item.caseNumber}</option>
-                ))}
+                <option value="">Выберите дело</option>
+                {cases.map((item) => <option key={item.id} value={item.id}>{item.caseNumber}</option>)}
               </select>
-              <input type="datetime-local" value={new Date(hearingForm.scheduledAt).toISOString().slice(0, 16)} onChange={(e) => setHearingForm({ ...hearingForm, scheduledAt: new Date(e.target.value).toISOString() })} />
+              <label>Дата и время</label>
+              <input type="datetime-local" value={hearingForm.scheduledAt} onChange={(e) => setHearingForm({ ...hearingForm, scheduledAt: e.target.value })} />
+              <label>Режим протоколирования</label>
               <select value={hearingForm.recordingMode} onChange={(e) => setHearingForm({ ...hearingForm, recordingMode: e.target.value })}>
-                <option value="WRITTEN_PROTOCOL_WITH_AV">WRITTEN_PROTOCOL_WITH_AV</option>
-                <option value="AV_WITH_SHORT_PROTOCOL">AV_WITH_SHORT_PROTOCOL</option>
-                <option value="DIGITAL_AV_IS_PROTOCOL">DIGITAL_AV_IS_PROTOCOL</option>
+                <option value="WRITTEN_PROTOCOL_WITH_AV">Письменный протокол + А/В</option>
+                <option value="AV_WITH_SHORT_PROTOCOL">А/В + краткий протокол</option>
+                <option value="DIGITAL_AV_IS_PROTOCOL">А/В как протокол</option>
               </select>
-              <input value={hearingForm.presidingJudgeName} onChange={(e) => setHearingForm({ ...hearingForm, presidingJudgeName: e.target.value })} placeholder="Presiding judge" />
-              <input value={hearingForm.secretaryName} onChange={(e) => setHearingForm({ ...hearingForm, secretaryName: e.target.value })} placeholder="Secretary" />
-              <input value={hearingForm.location} onChange={(e) => setHearingForm({ ...hearingForm, location: e.target.value })} placeholder="Location" />
-              <button onClick={createHearing}>Create hearing</button>
+              <input value={hearingForm.presidingJudgeName} onChange={(e) => setHearingForm({ ...hearingForm, presidingJudgeName: e.target.value })} placeholder="Председательствующий судья" />
+              <input value={hearingForm.secretaryName} onChange={(e) => setHearingForm({ ...hearingForm, secretaryName: e.target.value })} placeholder="Секретарь" />
+              <input value={hearingForm.location} onChange={(e) => setHearingForm({ ...hearingForm, location: e.target.value })} placeholder="Зал заседания" />
+              <button disabled={busy || !selectedCaseId} onClick={() => void createHearing()}>Создать заседание</button>
             </div>
           )}
 
           {activeTab === 'recordings' && (
             <div className="panel">
-              <h3>Upload recording</h3>
-              <select value={recordingForm.hearingId || selectedCaseId} onChange={(e) => setRecordingForm({ ...recordingForm, hearingId: e.target.value })}>
-                {(hearings.length ? hearings : (selectedCaseId ? [{ id: selectedCaseId, caseId: selectedCaseId, status: 'planned', recordingMode: 'manual', scheduledAt: new Date().toISOString() }] : [])).map((item) => (
-                  <option key={item.id} value={item.id}>{item.id}</option>
-                ))}
+              <h3>Аудиозапись заседания</h3>
+              <label>Дело</label>
+              <select value={selectedCaseId} onChange={(e) => setSelectedCaseId(e.target.value)}>
+                <option value="">Выберите дело</option>
+                {cases.map((item) => <option key={item.id} value={item.id}>{item.caseNumber}</option>)}
               </select>
-              <input value={recordingForm.storageKey} onChange={(e) => setRecordingForm({ ...recordingForm, storageKey: e.target.value })} placeholder="Storage key" />
-              <button onClick={createRecording}>Create recording</button>
-              <button className="secondary" onClick={triggerASR}>Trigger ASR</button>
-              <button className="secondary" onClick={exportProtocol}>Export protocol</button>
+              <label>Заседание</label>
+              <select value={selectedHearingId} onChange={(e) => setSelectedHearingId(e.target.value)}>
+                <option value="">Выберите заседание</option>
+                {hearings.map((item) => <option key={item.id} value={item.id}>{new Date(item.scheduledAt).toLocaleString()} — {item.id.slice(0, 8)}</option>)}
+              </select>
+              <label>Файл аудиозаписи</label>
+              <input type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.webm,.flac" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+              <button disabled={busy || !selectedHearingId || !audioFile} onClick={() => void uploadRecording()}>Загрузить аудио</button>
+              <hr />
+              <label>Запись для распознавания</label>
+              <select value={selectedRecordingId} onChange={(e) => setSelectedRecordingId(e.target.value)}>
+                <option value="">Выберите запись</option>
+                {recordings.map((item) => <option key={item.id} value={item.id}>{item.originalName}</option>)}
+              </select>
+              <select value={language} onChange={(e) => setLanguage(e.target.value as 'ky' | 'ru')}>
+                <option value="ky">Кыргызский</option><option value="ru">Русский</option>
+              </select>
+              <button disabled={busy || !selectedRecordingId} onClick={() => void transcribeRecording()}>Распознать и сохранить текст</button>
+              <hr />
+              <h3>Экспорт протокола</h3>
+              <p>{protocols.length ? `Доступен документ: v${protocols[0].version} (${protocols[0].status})` : 'Для этого заседания пока нет документа протокола.'}</p>
+              <button disabled={busy || !protocols.length} onClick={() => void exportProtocol()}>Скачать DOCX</button>
             </div>
           )}
         </aside>
@@ -301,83 +301,38 @@ export default function App() {
         <main className="content-panel">
           {activeTab === 'cases' && (
             <section className="table-card">
-              <h3>Cases</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case</th>
-                    <th>Title</th>
-                    <th>Code</th>
-                    <th>Status</th>
+              <h3>Судебные дела</h3>
+              <table><thead><tr><th>Номер</th><th>Название</th><th>Код</th><th>Статус</th></tr></thead>
+                <tbody>{cases.map((item) => (
+                  <tr key={item.id} onClick={() => setSelectedCaseId(item.id)} className={selectedCase?.id === item.id ? 'selected' : ''}>
+                    <td>{item.caseNumber}</td><td>{item.title}</td><td>{item.proceedingCode}</td><td><span className="badge">{item.status}</span></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {cases.map((item) => (
-                    <tr key={item.id} onClick={() => setSelectedCaseId(item.id)} className={currentCase?.id === item.id ? 'selected' : ''}>
-                      <td>{item.caseNumber}</td>
-                      <td>{item.title}</td>
-                      <td>{item.proceedingCode}</td>
-                      <td><span className="badge">{item.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
+                ))}</tbody>
               </table>
+              {!cases.length && <p>Дел пока нет.</p>}
             </section>
           )}
-
           {activeTab === 'hearings' && (
             <section className="table-card">
-              <h3>Hearings</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case</th>
-                    <th>When</th>
-                    <th>Mode</th>
-                    <th>Judge</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hearings.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.caseId}</td>
-                      <td>{new Date(item.scheduledAt).toLocaleString()}</td>
-                      <td>{item.recordingMode}</td>
-                      <td>{item.presidingJudgeName || '-'}</td>
-                      <td><span className="badge">{item.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
+              <h3>Заседания {selectedCase ? `— ${selectedCase.caseNumber}` : ''}</h3>
+              <table><thead><tr><th>Дата</th><th>Режим</th><th>Судья</th><th>Статус</th></tr></thead>
+                <tbody>{hearings.map((item) => (
+                  <tr key={item.id}><td>{new Date(item.scheduledAt).toLocaleString()}</td><td>{item.recordingMode}</td><td>{item.presidingJudgeName || '—'}</td><td><span className="badge">{item.status}</span></td></tr>
+                ))}</tbody>
               </table>
+              {!hearings.length && <p>Для выбранного дела нет заседаний.</p>}
             </section>
           )}
-
           {activeTab === 'recordings' && (
             <section className="table-card">
-              <h3>Recordings</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Hearing</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recordings.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.originalName}</td>
-                      <td>{item.hearingId}</td>
-                      <td>{item.mimeType}</td>
-                      <td><span className="badge">{item.status}</span></td>
-                      <td>{Math.round(item.sizeBytes / 1024)} KB</td>
-                    </tr>
-                  ))}
-                </tbody>
+              <h3>Аудиозаписи</h3>
+              <table><thead><tr><th>Файл</th><th>Тип</th><th>Статус</th><th>Размер</th></tr></thead>
+                <tbody>{recordings.map((item) => (
+                  <tr key={item.id}><td>{item.originalName}</td><td>{item.mimeType}</td><td><span className="badge">{item.status}</span></td><td>{(Number(item.sizeBytes) / 1024 / 1024).toFixed(1)} MB</td></tr>
+                ))}</tbody>
               </table>
+              {!recordings.length && <p>Для выбранного заседания аудиозаписей нет.</p>}
+              <p>После распознавания текстовые фрагменты сохраняются в TranscriptSegment. Редактор для ручной правки текста и полноценная юридическая проверка протокола пока не реализованы.</p>
             </section>
           )}
         </main>

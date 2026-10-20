@@ -1,4 +1,6 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { createReadStream } from 'node:fs';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { WorkflowService } from './workflow.service';
 import { ApiKeyGuard } from '../security/api-key.guard';
@@ -22,22 +24,13 @@ export class WorkflowController {
     return this.service.createHearingWorkflow(body);
   }
 
-  @Post('recording')
-  @ApiOperation({ summary: 'Create recording record and queue ASR workflow' })
-  createRecording(@Body() body: any) {
-    return this.service.createRecordingWorkflow(body);
-  }
-
-  @Post('transcription/:recordingId')
-  @ApiOperation({ summary: 'Queue transcription for a recording' })
-  queueTranscription(@Param('recordingId') recordingId: string, @Body() body: { language?: 'ky' | 'ru' }) {
-    return this.service.triggerAsrWorkflow(recordingId, body.language ?? 'ky');
-  }
-
   @Post('protocol/export/:protocolId')
   @ApiOperation({ summary: 'Export protocol to DOCX' })
-  exportProtocol(@Param('protocolId') protocolId: string) {
-    return this.service.exportProtocolWorkflow(protocolId);
+  async exportProtocol(@Param('protocolId') protocolId: string, @Res({ passthrough: true }) response: Response) {
+    const file = await this.service.exportProtocolWorkflow(protocolId);
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    response.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    return new StreamableFile(createReadStream(file.outputPath));
   }
 }
 

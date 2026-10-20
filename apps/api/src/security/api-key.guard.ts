@@ -1,24 +1,36 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest();
-    const apiKey = req.headers['x-api-key'] ?? req.headers['authorization'];
-
     const expected = process.env.API_KEY;
 
-    if (!expected) {
-      return true;
+    // Never silently disable the guard because a deployment variable is missing.
+    if (!expected || expected === 'change-me' || expected.startsWith('replace-with-')) {
+      throw new InternalServerErrorException(
+        'API_KEY must be configured with a non-default secret before the API can be used',
+      );
     }
 
-    if (!apiKey) {
+    const request = context.switchToHttp().getRequest();
+    const raw = request.headers['x-api-key'] ?? request.headers['authorization'];
+    const provided = Array.isArray(raw) ? raw[0] : raw;
+
+    if (!provided) {
       throw new UnauthorizedException('API key is required');
     }
 
-    const valid = Array.isArray(apiKey)
-      ? apiKey.includes(expected)
-      : apiKey === expected || apiKey === `Bearer ${expected}` || apiKey === `bearer ${expected}`;
+    const normalized = provided.trim();
+    const valid =
+      normalized === expected ||
+      normalized === `Bearer ${expected}` ||
+      normalized === `bearer ${expected}`;
 
     if (!valid) {
       throw new UnauthorizedException('Invalid API key');
@@ -27,4 +39,3 @@ export class ApiKeyGuard implements CanActivate {
     return true;
   }
 }
-

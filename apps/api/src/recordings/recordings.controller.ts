@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RecordingsService } from './recordings.service';
@@ -23,8 +35,13 @@ export class RecordingsController {
   @ApiOperation({ summary: 'Upload hearing recording' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UploadRecordingDto })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: Number(process.env.MAX_AUDIO_BYTES || 1_073_741_824), files: 1 },
+    }),
+  )
   upload(@Body() body: { hearingId: string }, @UploadedFile() file: any) {
+    if (!file) throw new BadRequestException('Audio file is required');
     return this.service.upload({ hearingId: body.hearingId, file });
   }
 

@@ -24,7 +24,7 @@ The initial implementation should target administrative proceedings first, becau
 - prisma.config.ts — Prisma ORM v7 CLI configuration.
 - apps/api/src/prisma.service.example.ts — NestJS Prisma 7 + PostgreSQL driver-adapter example.
 - `.env.example` — local environment variables.
-- `docker-compose.yml` — PostgreSQL only; app services are intentionally not presented as production-ready until their implementations and security checks exist.
+- `docker-compose.yml` — local PostgreSQL, NestJS API, offline ASR service and static web frontend; this local stack is not a production deployment.
 
 ## Development principles
 
@@ -41,16 +41,18 @@ The initial implementation should target administrative proceedings first, becau
 
 1. Create environment file:
    cp .env.example .env
-2. Start database and services:
-   docker compose up -d
-3. Generate Prisma client:
+2. Start PostgreSQL:
+   docker compose up -d postgres
+3. Install dependencies and generate Prisma client:
+   npm install
    npm run db:generate
-4. Run migrations:
+4. Run migrations and seed demo data:
    npm run db:migrate
-5. Seed demo data:
    npm run db:seed
-6. Start API:
+5. Start the API and frontend for development:
    npm run dev:api
+   npm run dev:web
+6. If running the full Docker stack, preload the offline ASR model into `models/large-v3`, then run `docker compose up --build`.
 
 ## API quick test
 
@@ -59,10 +61,35 @@ The initial implementation should target administrative proceedings first, becau
 - POST /recordings/upload
 - POST /workflow/case
 - POST /workflow/hearing
-- POST /workflow/recording
-- POST /workflow/transcription/:recordingId
-- POST /workflow/protocol/export/:protocolId
+- POST /transcription/trigger (synchronous ASR call; persists transcript segments)
+- POST /workflow/protocol/export/:protocolId (returns a DOCX download)
+- GET /hearings/:id (includes recording and protocol-document metadata)
 
 ## Important
 
 This repository is a strong technical backbone, but not a court-certified production system. Any real legal deployment needs legal review, court-approved configuration, and compliance validation.
+
+
+## Corrections in branch `fix/workflow-and-storage`
+
+This branch contains a first repair pass for local development:
+
+- API and ASR API-key guards fail closed when keys are missing or still placeholders.
+- Audio uploads validate required fields, file size, extension and MIME type, calculate SHA-256, and use private storage.
+- The web UI uses a real selected audio file, checks failed HTTP responses, requires an actual hearing ID, and uses configurable local API settings.
+- The ASR endpoint now finds the recording by its storage key, records a transcription job, saves recognized segments to PostgreSQL, and updates job/recording status.
+- DOCX export writes to `COURT_STORAGE_ROOT/exports`, exports the stored protocol content, returns a downloadable DOCX, and does not mark a draft FINAL merely because it was exported.
+- The seed includes a demo protocol template and draft for checking DOCX export.
+- The API Docker image generates the Prisma client during build, and Docker Compose uses the database service hostname from inside the container.
+
+### Local configuration notes
+
+1. Copy root `.env.example` to `.env` and replace every `replace-with-...` value with a different long random secret.
+2. Copy `apps/web/.env.example` to `apps/web/.env.local` and set `VITE_API_KEY` equal to the root `API_KEY` **for localhost testing only**. Vite embeds `VITE_*` values in browser JavaScript; do not use this shared-key setup for a deployed court system.
+3. Place the pre-downloaded faster-whisper/CTranslate2 model files in `models/large-v3` before starting ASR. Compose mounts that directory read-only at `/models/large-v3`. The repository does not contain model weights and the service uses `local_files_only=True`.
+4. Run `npm install`, `npm run db:generate`, `npm run db:migrate`, `npm run db:seed`, then `docker compose up --build` if you use Docker. For a fully Docker-based setup, ensure the `.env` file has the correct local secrets before building.
+5. Run `npm run build` and review all output before using the branch.
+
+### Remaining before real court use
+
+This is not production-ready authentication: the starter still uses a shared API key, not per-user login/roles. ASR is called synchronously by the API rather than by a durable background worker, and the protocol editor, version history, legal completeness checks, signing, and audit policy need implementation and testing. Do not process real case audio or personal data until those are complete and reviewed.
