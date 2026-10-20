@@ -1,7 +1,6 @@
-import { Body, Controller, Param, Post, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { createReadStream } from 'node:fs';
 import type { Response } from 'express';
-import { Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { WorkflowService } from './workflow.service';
 import { ApiKeyGuard } from '../security/api-key.guard';
@@ -23,18 +22,6 @@ export class WorkflowController {
   @ApiOperation({ summary: 'Create hearing in workflow' })
   createHearing(@Body() body: any) {
     return this.service.createHearingWorkflow(body);
-  }
-
-  @Post('recording')
-  @ApiOperation({ summary: 'Create recording record and queue ASR workflow' })
-  createRecording(@Body() body: any) {
-    return this.service.createRecordingWorkflow(body);
-  }
-
-  @Post('transcription/:recordingId')
-  @ApiOperation({ summary: 'Queue transcription for a recording' })
-  queueTranscription(@Param('recordingId') recordingId: string, @Body() body: { language?: 'ky' | 'ru' }) {
-    return this.service.triggerAsrWorkflow(recordingId, body.language ?? 'ky');
   }
 
   @Post('protocol/export/:protocolId')
