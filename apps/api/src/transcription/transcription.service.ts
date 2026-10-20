@@ -33,7 +33,7 @@ export class TranscriptionService {
         status: 'RUNNING',
         progressPercent: 5,
         startedAt: new Date(),
-        attemptCount: { increment: 1 },
+        attemptCount: 1,
       },
     });
 
