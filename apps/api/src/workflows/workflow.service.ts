@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Packer, Paragraph, Document, HeadingLevel } from 'docx';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 @Injectable()
 export class WorkflowService {
