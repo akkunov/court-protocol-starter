@@ -50,7 +50,6 @@ export default function App() {
   const [hearings, setHearings] = useState<HearingItem[]>([]);
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
   const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
-  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState('');
   const [selectedHearingId, setSelectedHearingId] = useState('');
   const [selectedRecordingId, setSelectedRecordingId] = useState('');
@@ -182,13 +181,13 @@ export default function App() {
     if (!protocol) throw new Error('Для заседания нет черновика протокола. Создайте ProtocolDocument через API после настройки шаблона и пользователя.');
     const headers = new Headers();
     if (API_KEY) headers.set('x-api-key', API_KEY);
-    const response = await fetch(\u0060\u0024{API_BASE}/workflow/protocol/export/\u0024{encodeURIComponent(protocol.id)}\u0060, { method: 'POST', headers });
-    if (!response.ok) throw new Error(\u0060Ошибка экспорта DOCX: HTTP \u0024{response.status}\u0060);
+    const response = await fetch(`${API_BASE}/workflow/protocol/export/${encodeURIComponent(protocol.id)}`, { method: 'POST', headers });
+    if (!response.ok) throw new Error(`Ошибка экспорта DOCX: HTTP ${response.status}`);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = \u0060protocol-\u0024{protocol.id}-v\u0024{protocol.version}.docx\u0060;
+    anchor.download = `protocol-${protocol.id}-v${protocol.version}.docx`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
