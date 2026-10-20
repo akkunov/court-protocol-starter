@@ -27,7 +27,7 @@ export class HearingsService {
   async getById(id: string) {
     const item = await this.prisma.hearing.findUnique({
       where: { id },
-      include: { participants: true, recordings: true, segments: true },
+      include: { participants: true, recordings: true, segments: true, documents: true },
     });
 
     if (!item) {
