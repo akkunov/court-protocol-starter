@@ -52,7 +52,7 @@ The initial implementation should target administrative proceedings first, becau
 5. Start the API and frontend for development:
    npm run dev:api
    npm run dev:web
-6. If running the full Docker stack, preload the offline ASR model into the configured model volume, then run `docker compose up --build`.
+6. If running the full Docker stack, preload the offline ASR model into `models/large-v3`, then run `docker compose up --build`.
 
 ## API quick test
 
@@ -86,7 +86,7 @@ This branch contains a first repair pass for local development:
 
 1. Copy root `.env.example` to `.env` and replace every `replace-with-...` value with a different long random secret.
 2. Copy `apps/web/.env.example` to `apps/web/.env.local` and set `VITE_API_KEY` equal to the root `API_KEY` **for localhost testing only**. Vite embeds `VITE_*` values in browser JavaScript; do not use this shared-key setup for a deployed court system.
-3. Place the pre-downloaded faster-whisper/CTranslate2 model files at the configured `ASR_MODEL_PATH` inside the ASR container. The repository does not contain model weights and the service uses `local_files_only=True`.
+3. Place the pre-downloaded faster-whisper/CTranslate2 model files in `models/large-v3` before starting ASR. Compose mounts that directory read-only at `/models/large-v3`. The repository does not contain model weights and the service uses `local_files_only=True`.
 4. Run `npm install`, `npm run db:generate`, `npm run db:migrate`, `npm run db:seed`, then `docker compose up --build` if you use Docker. For a fully Docker-based setup, ensure the `.env` file has the correct local secrets before building.
 5. Run `npm run build` and review all output before using the branch.
 
