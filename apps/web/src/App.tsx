@@ -258,7 +258,7 @@ export default function App() {
               <label>Файл аудиозаписи</label>
               <input type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.webm,.flac" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
               <button disabled={busy || !selectedHearingId || !audioFile} onClick={() => void uploadRecording()}>Загрузить аудио</button>
-              <divider />
+              <hr />
               <label>Запись для распознавания</label>
               <select value={selectedRecordingId} onChange={(e) => setSelectedRecordingId(e.target.value)}>
                 <option value="">Выберите запись</option>
