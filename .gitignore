@@ -6,8 +6,6 @@ models/
 coverage
 dist
 apps/api/src/generated
-prisma/migrations/*
-!prisma/migrations/.gitkeep
 .vscode
 .DS_Store
 __pycache__
