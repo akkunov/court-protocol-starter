@@ -49,7 +49,7 @@ export class TranscriptionService {
 
     try {
       const apiKey = process.env.ASR_SERVICE_API_KEY;
-      if (!apiKey || apiKey === 'change-me') {
+      if (!apiKey || apiKey === 'change-me' || apiKey.startsWith('replace-with-')) {
         throw new ServiceUnavailableException('ASR_SERVICE_API_KEY is not configured');
       }
 
