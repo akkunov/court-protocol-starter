@@ -1,0 +1,44 @@
+{
+  "name": "@court-protocol/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:prod": "node dist/main.js",
+    "start:dev": "tsx watch src/main.ts",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/swagger": "^11.0.0",
+    "@nestjs/throttler": "^6.0.0",
+    "@prisma/client": "^7.0.0",
+    "@prisma/adapter-pg": "^7.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "dotenv": "^16.4.5",
+    "docx": "^9.3.0",
+    "express": "^5.1.0",
+    "pg": "^8.12.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.6.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-import": "^2.0.0",
+    "tsconfig-paths": "^4.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.0"
+  }
+}

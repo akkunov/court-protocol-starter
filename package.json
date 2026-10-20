@@ -1,0 +1,30 @@
+{
+  "name": "court-protocol-starter",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace @court-protocol/api",
+    "dev:web": "npm run dev --workspace @court-protocol/web",
+    "build": "npm run build --workspace @court-protocol/api && npm run build --workspace @court-protocol/web",
+    "start": "npm run start:prod --workspace @court-protocol/api",
+    "start:web": "npm run preview --workspace @court-protocol/web",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force --schema prisma/schema.prisma && npm run db:seed",
+    "lint": "npm run lint --workspace @court-protocol/api",
+    "test": "npm run test --workspace @court-protocol/api"
+  },
+  "devDependencies": {
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "dotenv": "^16.4.5",
+    "prisma": "^7.0.0",
+    "typescript": "^5.9.2"
+  }
+}

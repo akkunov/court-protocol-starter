@@ -1,0 +1,52 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: court-protocol-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      API_KEY: ${API_KEY:-change-me}
+      ASR_SERVICE_URL: http://asr:8000
+      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:-change-me}
+      COURT_STORAGE_ROOT: /srv/court-protocol-storage
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      asr:
+        condition: service_started
+    volumes:
+      - court_protocol_storage:/srv/court-protocol-storage
+    security_opt:
+      - no-new-privileges:true
+
+  asr:
+    build:
+      context: ./services/asr
+      dockerfile: Dockerfile
+    container_name: court-protocol-asr
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASR_MODEL_PATH: ${ASR_MODEL_PATH:-/models/large-v3}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      COURT_STORAGE_ROOT: /srv/court-protocol-storage
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - court_protocol_storage:/srv/court-protocol-storage
+      - court_asr_model:/models
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  court_protocol_storage:
+  court_asr_model:
+

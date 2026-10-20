@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: court-protocol-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-court_protocol}
+      POSTGRES_USER: ${POSTGRES_USER:-court_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - court_protocol_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-court_app} -d ${POSTGRES_DB:-court_protocol}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: court-protocol-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT:-3000}
+      API_KEY: ${API_KEY:-change-me}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      COURT_STORAGE_ROOT: /srv/court-protocol-storage
+      ASR_SERVICE_URL: ${ASR_SERVICE_URL:-http://asr:8000}
+      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:-change-me}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      asr:
+        condition: service_started
+    volumes:
+      - court_protocol_storage:/srv/court-protocol-storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    command: sh -c "chmod +x /app/scripts/wait-for-db.sh && /app/scripts/wait-for-db.sh node dist/main.js"
+
+  asr:
+    build:
+      context: ./services/asr
+      dockerfile: Dockerfile
+    container_name: court-protocol-asr
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASR_MODEL_PATH: ${ASR_MODEL_PATH:-/models/large-v3}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      COURT_STORAGE_ROOT: /srv/court-protocol-storage
+      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:-change-me}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - court_protocol_storage:/srv/court-protocol-storage
+      - court_asr_model:/models
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: court-protocol-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  court_protocol_pgdata:
+  court_protocol_storage:
+  court_asr_model:

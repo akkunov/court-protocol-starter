@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../apps/api/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProceedingCode {
+  APC
+  GPK
+  UPK
+}
+
+enum CourtInstance {
+  FIRST_INSTANCE
+  APPEAL
+  CASSATION
+}
+
+enum RecordingMode {
+  WRITTEN_PROTOCOL_WITH_AV
+  AV_WITH_SHORT_PROTOCOL
+  DIGITAL_AV_IS_PROTOCOL
+}
+
+enum CaseStatus {
+  OPEN
+  SUSPENDED
+  CLOSED
+  ARCHIVED
+}
+
+enum HearingStatus {
+  PLANNED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ParticipantRole {
+  PRESIDING_JUDGE
+  JUDGE
+  SECRETARY
+  APPLICANT
+  PLAINTIFF
+  DEFENDANT
+  ADMINISTRATIVE_RESPONDENT
+  ACCUSED
+  DEFENCE_COUNSEL
+  PROSECUTOR
+  VICTIM
+  REPRESENTATIVE
+  THIRD_PARTY
+  WITNESS
+  EXPERT
+  SPECIALIST
+  INTERPRETER
+  OTHER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  JOINED_REMOTELY
+  LEFT_SESSION
+  UNKNOWN
+}
+
+enum RecordingSource {
+  MOBILE_LIVE
+  DICTAPHONE_UPLOAD
+  DESKTOP_UPLOAD
+  DICTATION
+}
+
+enum TranscriptionJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RecordingStatus {
+  CREATED
+  RECORDING
+  UPLOADED
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETENTION_HOLD
+  DELETED
+}
+
+enum SegmentStatus {
+  PARTIAL
+  RECOGNIZED
+  REVIEWED
+  CORRECTED
+}
+
+enum ProtocolKind {
+  FULL_WRITTEN
+  SHORT_WRITTEN
+  TRANSCRIPT
+}
+
+enum DocumentStatus {
+  DRAFT
+  IN_REVIEW
+  REVIEWED
+  FINAL
+  SIGNED
+  ARCHIVED
+}
+
+enum AuditAction {
+  CREATE
+  READ_SENSITIVE
+  UPDATE
+  EXPORT
+  RECORDING_STARTED
+  RECORDING_STOPPED
+  TRANSCRIPTION_STARTED
+  TRANSCRIPTION_FAILED
+  VERSION_FINALIZED
+  SIGNED
+  ACCESS_DENIED
+  RETENTION_ACTION
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  username     String       @unique @db.VarChar(100)
+  displayName  String       @db.VarChar(250)
+  roleKey      String       @db.VarChar(80)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  auditLogs    AuditLog[]
+  createdDocs  ProtocolDocument[] @relation("DocumentCreatedBy")
+  finalizedDocs ProtocolDocument[] @relation("DocumentFinalizedBy")
+}
+
+model LegalProfile {
+  id              String        @id @default(uuid()) @db.Uuid
+  code            ProceedingCode
+  version         String        @db.VarChar(80)
+  sourceUrl       String        @db.VarChar(1000)
+  effectiveFrom   DateTime?
+  effectiveTo     DateTime?
+  rules           Json
+  isActive        Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  cases           CourtCase[]
+  templates       ProtocolTemplate[]
+
+  @@unique([code, version])
+  @@index([code, isActive])
+}
+
+model CourtCase {
+  id              String        @id @default(uuid()) @db.Uuid
+  caseNumber      String        @db.VarChar(120)
+  title           String        @db.VarChar(1000)
+  proceedingCode  ProceedingCode
+  legalProfileId  String        @db.Uuid
+  legalProfile    LegalProfile  @relation(fields: [legalProfileId], references: [id], onDelete: Restrict)
+  status          CaseStatus    @default(OPEN)
+  courtName       String        @db.VarChar(500)
+  category        String?       @db.VarChar(300)
+  openedAt        DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  hearings        Hearing[]
+
+  @@unique([courtName, caseNumber])
+  @@index([proceedingCode, status, updatedAt])
+}
+
+model Hearing {
+  id                   String         @id @default(uuid()) @db.Uuid
+  caseId               String         @db.Uuid
+  case                 CourtCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  instance             CourtInstance  @default(FIRST_INSTANCE)
+  status               HearingStatus  @default(PLANNED)
+  recordingMode        RecordingMode
+  scheduledAt          DateTime
+  startedAt            DateTime?
+  endedAt              DateTime?
+  timezone              String         @default("Asia/Bishkek") @db.VarChar(64)
+  presidingJudgeName   String?        @db.VarChar(250)
+  secretaryName        String?        @db.VarChar(250)
+  location             String?        @db.VarChar(500)
+  closedSession        Boolean        @default(false)
+  avRecordingExpected  Boolean        @default(true)
+  avExceptionDecision  String?        @db.Text
+  technicalFailureNote String?        @db.Text
+  ruleSnapshot         Json
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  participants         HearingParticipant[]
+  recordings           AudioRecording[]
+  segments             TranscriptSegment[]
+  events               HearingEvent[]
+  documents            ProtocolDocument[]
+
+  @@index([caseId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+model HearingParticipant {
+  id                 String           @id @default(uuid()) @db.Uuid
+  hearingId          String           @db.Uuid
+  hearing            Hearing          @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  fullName           String           @db.VarChar(300)
+  role               ParticipantRole
+  attendance         AttendanceStatus @default(UNKNOWN)
+  organization       String?          @db.VarChar(500)
+  representativeFor  String?          @db.VarChar(300)
+  authorityDocument  String?          @db.VarChar(500)
+  speakerKey         String?          @db.VarChar(100)
+  notes              String?          @db.Text
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  events             HearingEvent[]
+
+  @@index([hearingId, role])
+  @@index([hearingId, fullName])
+}
+
+model AudioRecording {
+  id             String          @id @default(uuid()) @db.Uuid
+  hearingId      String          @db.Uuid
+  hearing        Hearing         @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  storageKey     String          @unique @db.VarChar(500)
+  source         RecordingSource @default(DESKTOP_UPLOAD)
+  originalName   String          @db.VarChar(255)
+  mimeType       String          @db.VarChar(100)
+  sizeBytes      BigInt
+  durationMs     BigInt?
+  sha256         String          @db.Char(64)
+  status         RecordingStatus @default(CREATED)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  failureReason  String?         @db.Text
+  retentionUntil DateTime?
+  createdAt      DateTime        @default(now())
+
+  segments       TranscriptSegment[]
+  transcriptionJobs TranscriptionJob[]
+
+  @@index([hearingId, status])
+  @@index([retentionUntil])
+}
+
+model TranscriptionJob {
+  id              String                @id @default(uuid()) @db.Uuid
+  recordingId     String                @db.Uuid
+  recording       AudioRecording        @relation(fields: [recordingId], references: [id], onDelete: Restrict)
+  status          TranscriptionJobStatus @default(QUEUED)
+  language        String                @default("ky") @db.VarChar(10)
+  modelKey        String                @default("large-v3") @db.VarChar(100)
+  progressPercent Int                   @default(0)
+  attemptCount    Int                   @default(0)
+  idempotencyKey  String?               @unique @db.VarChar(200)
+  errorCode       String?               @db.VarChar(100)
+  errorMessage    String?               @db.Text
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, createdAt])
+  @@index([recordingId, createdAt])
+}
+
+model TranscriptSegment {
+  id            String        @id @default(uuid()) @db.Uuid
+  hearingId     String        @db.Uuid
+  hearing       Hearing       @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  recordingId   String?       @db.Uuid
+  recording     AudioRecording? @relation(fields: [recordingId], references: [id], onDelete: SetNull)
+  sequence      Int
+  startMs       BigInt
+  endMs         BigInt
+  text          String        @db.Text
+  language      String        @default("ky") @db.VarChar(10)
+  speakerKey    String?       @db.VarChar(100)
+  confidence    Float?
+  status        SegmentStatus @default(RECOGNIZED)
+  engine        String        @default("faster-whisper") @db.VarChar(100)
+  modelVersion  String?       @db.VarChar(100)
+  revision      Int           @default(1)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([hearingId, sequence])
+  @@index([hearingId, startMs])
+  @@index([recordingId, startMs])
+}
+
+model HearingEvent {
+  id              String               @id @default(uuid()) @db.Uuid
+  hearingId       String               @db.Uuid
+  hearing         Hearing              @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  sequence        Int
+  eventType       String               @db.VarChar(100)
+  occurredAt      DateTime
+  participantId   String?              @db.Uuid
+  participant     HearingParticipant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  text            String               @db.Text
+  sourceSegmentIds String[]
+  confirmedByUserId String?             @db.Uuid
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([hearingId, sequence])
+  @@index([hearingId, occurredAt])
+  @@index([hearingId, eventType])
+}
+
+model ProtocolTemplate {
+  id             String         @id @default(uuid()) @db.Uuid
+  key            String         @db.VarChar(120)
+  version        Int
+  proceedingCode ProceedingCode
+  language       String         @default("ky") @db.VarChar(10)
+  legalProfileId String         @db.Uuid
+  legalProfile   LegalProfile   @relation(fields: [legalProfileId], references: [id], onDelete: Restrict)
+  storageKey     String         @db.VarChar(500)
+  structure      Json
+  isActive       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+
+  documents      ProtocolDocument[]
+
+  @@unique([key, version, proceedingCode, language])
+  @@index([proceedingCode, isActive])
+}
+
+model ProtocolDocument {
+  id              String         @id @default(uuid()) @db.Uuid
+  hearingId       String         @db.Uuid
+  hearing         Hearing        @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  templateId      String         @db.Uuid
+  template        ProtocolTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  version         Int
+  kind            ProtocolKind
+  status          DocumentStatus @default(DRAFT)
+  content         Json
+  legalRuleSnapshot Json
+  docxStorageKey  String?        @db.VarChar(500)
+  createdById     String         @db.Uuid
+  createdBy       User           @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  finalizedById   String?        @db.Uuid
+  finalizedBy     User?          @relation("DocumentFinalizedBy", fields: [finalizedById], references: [id], onDelete: Restrict)
+  finalizedAt     DateTime?
+  signedAt        DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([hearingId, kind, version])
+  @@index([hearingId, status])
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  actorId     String      @db.Uuid
+  actor       User        @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action      AuditAction
+  entityType  String      @db.VarChar(100)
+  entityId    String      @db.VarChar(100)
+  details     Json?
+  occurredAt  DateTime    @default(now())
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([actorId, occurredAt])
+}
