@@ -84,6 +84,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:3000
+        VITE_API_KEY: ${API_KEY:?Set API_KEY in .env}
     container_name: court-protocol-web
     restart: unless-stopped
     ports:
