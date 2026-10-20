@@ -13,6 +13,7 @@ type RecordingItem = {
   id: string; hearingId: string; originalName: string; storageKey: string;
   mimeType: string; status: string; sizeBytes: number | string;
 };
+type ProtocolItem = { id: string; version: number; kind: string; status: string };
 type ApiError = { message?: string | string[] };
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -47,7 +48,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('cases');
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [hearings, setHearings] = useState<HearingItem[]>([]);
-  const [recordings, setRecordings] = useState<RecordingItem[]>([]);\n  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
+  const [recordings, setRecordings] = useState<RecordingItem[]>([]);
+  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
+  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState('');
   const [selectedHearingId, setSelectedHearingId] = useState('');
   const [selectedRecordingId, setSelectedRecordingId] = useState('');
@@ -95,10 +98,12 @@ export default function App() {
     if (!hearingId) {
       setRecordings([]);
       setSelectedRecordingId('');
+      setProtocols([]);
       return;
     }
-    const data = await api<{ recordings: RecordingItem[] }>(`/hearings/${encodeURIComponent(hearingId)}`);
+    const data = await api<{ recordings: RecordingItem[]; documents?: ProtocolItem[] }>(`/hearings/${encodeURIComponent(hearingId)}`);
     const list = data.recordings ?? [];
+    setProtocols(data.documents ?? []);
     setRecordings(list);
     setSelectedRecordingId((current) => current && list.some((item) => item.id === current) ? current : (list[0]?.id ?? ''));
   }, []);
@@ -172,7 +177,25 @@ export default function App() {
     setAudioFile(null);
   });
 
-  const exportProtocol = () => runAction('DOCX сформирован', async () => {\n    const protocol = protocols[0];\n    if (!protocol) throw new Error('Для заседания нет черновика протокола. Создайте ProtocolDocument через API после настройки шаблона и пользователя.');\n    const headers = new Headers();\n    if (API_KEY) headers.set('x-api-key', API_KEY);\n    const response = await fetch(\u0060\u0024{API_BASE}/workflow/protocol/export/\u0024{encodeURIComponent(protocol.id)}\u0060, { method: 'POST', headers });\n    if (!response.ok) throw new Error(\u0060Ошибка экспорта DOCX: HTTP \u0024{response.status}\u0060);\n    const blob = await response.blob();\n    const url = URL.createObjectURL(blob);\n    const anchor = document.createElement('a');\n    anchor.href = url;\n    anchor.download = \u0060protocol-\u0024{protocol.id}-v\u0024{protocol.version}.docx\u0060;\n    document.body.appendChild(anchor);\n    anchor.click();\n    anchor.remove();\n    URL.revokeObjectURL(url);\n  });\n\n  const transcribeRecording = () => runAction('Распознавание завершено; сегменты сохранены', async () => {
+  const exportProtocol = () => runAction('DOCX сформирован', async () => {
+    const protocol = protocols[0];
+    if (!protocol) throw new Error('Для заседания нет черновика протокола. Создайте ProtocolDocument через API после настройки шаблона и пользователя.');
+    const headers = new Headers();
+    if (API_KEY) headers.set('x-api-key', API_KEY);
+    const response = await fetch(\u0060\u0024{API_BASE}/workflow/protocol/export/\u0024{encodeURIComponent(protocol.id)}\u0060, { method: 'POST', headers });
+    if (!response.ok) throw new Error(\u0060Ошибка экспорта DOCX: HTTP \u0024{response.status}\u0060);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = \u0060protocol-\u0024{protocol.id}-v\u0024{protocol.version}.docx\u0060;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  const transcribeRecording = () => runAction('Распознавание завершено; сегменты сохранены', async () => {
     const recording = recordings.find((item) => item.id === selectedRecordingId);
     if (!recording) throw new Error('Выберите аудиозапись');
     const result = await api<{ segmentsSaved: number; status: string }>('/transcription/trigger', {
@@ -267,7 +290,11 @@ export default function App() {
               <select value={language} onChange={(e) => setLanguage(e.target.value as 'ky' | 'ru')}>
                 <option value="ky">Кыргызский</option><option value="ru">Русский</option>
               </select>
-              <button disabled={busy || !selectedRecordingId} onClick={() => void transcribeRecording()}>Распознать и сохранить текст</button>\n              <hr />\n              <h3>Экспорт протокола</h3>\n              <p>{protocols.length ? `Доступен документ: v${protocols[0].version} (${protocols[0].status})` : 'Для этого заседания пока нет документа протокола.'}</p>\n              <button disabled={busy || !protocols.length} onClick={() => void exportProtocol()}>Скачать DOCX</button>
+              <button disabled={busy || !selectedRecordingId} onClick={() => void transcribeRecording()}>Распознать и сохранить текст</button>
+              <hr />
+              <h3>Экспорт протокола</h3>
+              <p>{protocols.length ? `Доступен документ: v${protocols[0].version} (${protocols[0].status})` : 'Для этого заседания пока нет документа протокола.'}</p>
+              <button disabled={busy || !protocols.length} onClick={() => void exportProtocol()}>Скачать DOCX</button>
             </div>
           )}
         </aside>
