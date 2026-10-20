@@ -149,38 +149,60 @@ export class WorkflowService {
       throw new NotFoundException('Protocol not found');
     }
 
+    const flatten = (value: unknown, prefix = ''): string[] => {
+      if (value === null || value === undefined) return [];
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        const text = String(value).trim();
+        return text ? [prefix ? `${prefix}: ${text}` : text] : [];
+      }
+      if (Array.isArray(value)) {
+        return value.flatMap((item, index) => flatten(item, prefix ? `${prefix} ${index + 1}` : ''));
+      }
+      if (typeof value === 'object') {
+        return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) =>
+          flatten(item, prefix ? `${prefix} / ${key}` : key),
+        );
+      }
+      return [];
+    };
+
+    const contentLines = flatten(protocol.content);
     const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: [
-            new Paragraph({ text: 'Судебный протокол', heading: HeadingLevel.TITLE }),
-            new Paragraph({ text: `Дело: ${protocol.hearing.case.caseNumber}` }),
-            new Paragraph({ text: `Суд: ${protocol.hearing.case.courtName}` }),
-            new Paragraph({ text: `Тип: ${protocol.kind}` }),
-            new Paragraph({ text: `Версия: ${protocol.version}` }),
-            new Paragraph({ text: 'Содержимое протокола зафиксировано в системе и доступно для дальнейшей проверки.' }),
-          ],
-        },
-      ],
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({ text: 'Судебный протокол', heading: HeadingLevel.TITLE }),
+          new Paragraph({ text: `Дело: ${protocol.hearing.case.caseNumber}` }),
+          new Paragraph({ text: `Суд: ${protocol.hearing.case.courtName}` }),
+          new Paragraph({ text: `Тип документа: ${protocol.kind}` }),
+          new Paragraph({ text: `Версия: ${protocol.version}` }),
+          new Paragraph({ text: `Статус: ${protocol.status}` }),
+          new Paragraph({ text: '' }),
+          ...(contentLines.length
+            ? contentLines.map((line) => new Paragraph({ text: line }))
+            : [new Paragraph({ text: 'В документе пока нет содержимого протокола.' })]),
+        ],
+      }],
     });
 
-    const fileName = `protocol-${protocolId}.docx`;
-    const outputPath = join(process.cwd(), 'storage', 'exports', fileName);
+    const storageRoot = process.env.COURT_STORAGE_ROOT;
+    if (!storageRoot) {
+      throw new Error('COURT_STORAGE_ROOT must be configured');
+    }
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const fileName = `protocol-${protocolId}-v${protocol.version}.docx`;
+    const outputPath = join(storageRoot, 'exports', fileName);
+    mkdirSync(dirname(outputPath), { recursive: true });
     const buffer = await Packer.toBuffer(doc);
-    writeFileSync(outputPath, buffer);
+    writeFileSync(outputPath, buffer, { flag: 'w', mode: 0o600 });
 
     await this.prisma.protocolDocument.update({
       where: { id: protocolId },
-      data: { status: 'FINAL', docxStorageKey: `exports/${fileName}` },
+      data: { docxStorageKey: `exports/${fileName}` },
     });
 
-    return {
-      protocolId,
-      fileName,
-      outputPath,
-      status: 'FINAL',
-    };
+    return { protocolId, fileName, outputPath, status: protocol.status };
   }
 }
 
