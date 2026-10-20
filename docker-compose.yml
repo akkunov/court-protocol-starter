@@ -28,13 +28,14 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-court_app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-court_protocol}?schema=public
       PORT: ${PORT:-3000}
-      API_KEY: ${API_KEY:-change-me}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      API_KEY: ${API_KEY:?Set API_KEY in .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-1073741824}
       COURT_STORAGE_ROOT: /srv/court-protocol-storage
       ASR_SERVICE_URL: ${ASR_SERVICE_URL:-http://asr:8000}
-      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:-change-me}
+      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:?Set ASR_SERVICE_API_KEY in .env}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -51,7 +52,6 @@ services:
       retries: 10
     security_opt:
       - no-new-privileges:true
-    command: sh -c "chmod +x /app/scripts/wait-for-db.sh && /app/scripts/wait-for-db.sh node dist/main.js"
 
   asr:
     build:
@@ -66,7 +66,7 @@ services:
       ASR_DEVICE: ${ASR_DEVICE:-cpu}
       ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
       COURT_STORAGE_ROOT: /srv/court-protocol-storage
-      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:-change-me}
+      ASR_SERVICE_API_KEY: ${ASR_SERVICE_API_KEY:?Set ASR_SERVICE_API_KEY in .env}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
