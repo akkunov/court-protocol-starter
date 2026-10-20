@@ -12,7 +12,7 @@ export class ApiKeyGuard implements CanActivate {
     const expected = process.env.API_KEY;
 
     // Never silently disable the guard because a deployment variable is missing.
-    if (!expected || expected === 'change-me') {
+    if (!expected || expected === 'change-me' || expected.startsWith('replace-with-')) {
       throw new InternalServerErrorException(
         'API_KEY must be configured with a non-default secret before the API can be used',
       );
