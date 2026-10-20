@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.env
+coverage
+dist
+apps/api/src/generated
+prisma/migrations/*
+!prisma/migrations/.gitkeep
+__pycache__
+*.pyc
+
