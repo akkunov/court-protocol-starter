@@ -24,7 +24,7 @@ The initial implementation should target administrative proceedings first, becau
 - prisma.config.ts — Prisma ORM v7 CLI configuration.
 - apps/api/src/prisma.service.example.ts — NestJS Prisma 7 + PostgreSQL driver-adapter example.
 - `.env.example` — local environment variables.
-- `docker-compose.yml` — PostgreSQL only; app services are intentionally not presented as production-ready until their implementations and security checks exist.
+- `docker-compose.yml` — local PostgreSQL, NestJS API, offline ASR service and static web frontend; this local stack is not a production deployment.
 
 ## Development principles
 
@@ -41,16 +41,18 @@ The initial implementation should target administrative proceedings first, becau
 
 1. Create environment file:
    cp .env.example .env
-2. Start database and services:
-   docker compose up -d
-3. Generate Prisma client:
+2. Start PostgreSQL:
+   docker compose up -d postgres
+3. Install dependencies and generate Prisma client:
+   npm install
    npm run db:generate
-4. Run migrations:
+4. Run migrations and seed demo data:
    npm run db:migrate
-5. Seed demo data:
    npm run db:seed
-6. Start API:
+5. Start the API and frontend for development:
    npm run dev:api
+   npm run dev:web
+6. If running the full Docker stack, preload the offline ASR model into the configured model volume, then run `docker compose up --build`.
 
 ## API quick test
 
@@ -59,9 +61,9 @@ The initial implementation should target administrative proceedings first, becau
 - POST /recordings/upload
 - POST /workflow/case
 - POST /workflow/hearing
-- POST /workflow/recording
-- POST /workflow/transcription/:recordingId
-- POST /workflow/protocol/export/:protocolId
+- POST /transcription/trigger (synchronous ASR call; persists transcript segments)
+- POST /workflow/protocol/export/:protocolId (returns a DOCX download)
+- GET /hearings/:id (includes recording and protocol-document metadata)
 
 ## Important
 
