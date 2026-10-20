@@ -81,62 +81,6 @@ export class WorkflowService {
     };
   }
 
-  async createRecordingWorkflow(data: {
-    hearingId: string;
-    originalName: string;
-    mimeType: string;
-    sizeBytes: number;
-    storageKey: string;
-  }) {
-    const hearing = await this.prisma.hearing.findUnique({ where: { id: data.hearingId } });
-    if (!hearing) {
-      throw new NotFoundException('Hearing not found');
-    }
-
-    const recording = await this.prisma.audioRecording.create({
-      data: {
-        hearingId: data.hearingId,
-        storageKey: data.storageKey,
-        originalName: data.originalName,
-        mimeType: data.mimeType,
-        sizeBytes: BigInt(data.sizeBytes),
-        sha256: 'workflow-generated-sha256',
-        status: 'UPLOADED',
-      },
-    });
-
-    return {
-      recordingId: recording.id,
-      hearingId: data.hearingId,
-      status: recording.status,
-      nextStep: 'Transcribe recording',
-    };
-  }
-
-  async triggerAsrWorkflow(recordingId: string, language: 'ky' | 'ru' = 'ky') {
-    const recording = await this.prisma.audioRecording.findUnique({ where: { id: recordingId } });
-    if (!recording) {
-      throw new NotFoundException('Recording not found');
-    }
-
-    const job = await this.prisma.transcriptionJob.create({
-      data: {
-        recordingId,
-        language,
-        status: 'QUEUED',
-        progressPercent: 0,
-      },
-    });
-
-    return {
-      transcriptJobId: job.id,
-      recordingId,
-      status: job.status,
-      language,
-      nextStep: 'Review transcript segments and build protocol',
-    };
-  }
-
   async exportProtocolWorkflow(protocolId: string) {
     const protocol = await this.prisma.protocolDocument.findUnique({
       where: { id: protocolId },
